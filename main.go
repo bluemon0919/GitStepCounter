@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,17 +19,49 @@ type Config struct {
 	until string
 }
 
-var authors = []string{"bluemon0919"}
-var workspace string = "/Users/kota/go/src/stepcounter/sample"
-var since string = "2019-01-01"
-var until string = "2021-08-17"
+type Names []string
+
+func (ns *Names) String() string {
+	return fmt.Sprintf("%s", *ns)
+}
+
+func (ns *Names) Set(value string) error {
+	*ns = append(*ns, value)
+	return nil
+}
+
+var authors Names    // Git author names {"bluemon0919", "sample"}
+var workspace string // Root directory= "/Users/kota/go/src/stepcounter/sample"
+var since string     // "2006-01-02"
+var until string     // "2006-01-02"
 
 var repositoryShow = true
 var authorShow = true
 
+func init() {
+	flag.Var(&authors, "a", "Authorを指定します(複数指定可)。指定しない場合は全てのユーザが対象となります。")
+	flag.StringVar(&workspace, "d", "", "検索のルートディレクトリを指定します。指定しない場合は現在のディレクトリが対象となります。")
+	flag.StringVar(&since, "s", "", "特定の日付より新しいコミットを表示します(2006-01-02)")
+	flag.StringVar(&until, "u", "", "特定の日付より古いコミットを表示します(2006-01-02)")
+}
 func main() {
+	flag.Parse()
+	workspace, err := filepath.Abs(workspace)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("authors:", authors)
+	fmt.Println("rootDir:", workspace)
+	fmt.Println("since:", since)
+	fmt.Println("until:", until)
+
 	paths := workspaceWalk(workspace)
 	fmt.Println(paths)
+
+	// -aが指定されていない場合に、全ユーザ対象として検索できるように空データを入れる
+	if len(authors) == 0 {
+		authors = append(authors, "")
+	}
 
 	var counts = make(map[string]Count)
 
@@ -79,7 +112,15 @@ func commandExec(dir string, c Config) []byte {
 	if err != nil {
 		panic(err)
 	}
-	cmd := exec.Command("git", "log", "--numstat", "--all", "--author", c.name, "--since", c.since, "--until", c.until, "--no-merges", "--pretty=\"%h\"")
+	var cmd *exec.Cmd
+	args := []string{"log", "--numstat", "--all", "--author", c.name, "--no-merges", "--pretty=\"%h\""}
+	if len(c.since) != 0 {
+		args = append(args, "--since", c.since)
+	}
+	if len(c.until) != 0 {
+		args = append(args, "--until", c.until)
+	}
+	cmd = exec.Command("git", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		panic(err)

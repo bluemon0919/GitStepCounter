@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,16 +156,15 @@ func aggregate(commnadOutput []byte) Count {
 
 		d := strings.Split(str, string(" "))
 		if len(d) != 3 {
-			log.Fatal(str)
 			continue
 		}
 		add, err := strconv.Atoi(d[0])
 		if err != nil {
-			panic(err)
+			continue
 		}
 		sub, err := strconv.Atoi(d[1])
 		if err != nil {
-			panic(err)
+			continue
 		}
 		count.add += add
 		count.sub += sub

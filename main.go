@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -29,6 +28,7 @@ func (ns *Names) Set(value string) error {
 	return nil
 }
 
+var pull bool        // git pull exec flag
 var authors Names    // Git author names {"bluemon0919", "sample"}
 var workspace string // Root directory= "/Users/kota/go/src/stepcounter/sample"
 var since string     // "2006-01-02"
@@ -38,17 +38,20 @@ var repositoryShow = true
 var authorShow = true
 
 func init() {
+	flag.BoolVar(&pull, "pull", false, "ルートディレクトリ以下のリポジトリに対してgit pull操作を行います。")
 	flag.Var(&authors, "a", "Authorを指定します(複数指定可)。指定しない場合は全てのユーザが対象となります。")
 	flag.StringVar(&workspace, "d", "", "検索のルートディレクトリを指定します。指定しない場合は現在のディレクトリが対象となります。")
 	flag.StringVar(&since, "s", "", "特定の日付より新しいコミットを表示します(2006-01-02)")
 	flag.StringVar(&until, "u", "", "特定の日付より古いコミットを表示します(2006-01-02)")
 }
+
 func main() {
 	flag.Parse()
 	workspace, err := filepath.Abs(workspace)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("pull:", pull)
 	fmt.Println("authors:", authors)
 	fmt.Println("rootDir:", workspace)
 	fmt.Println("since:", since)
@@ -57,6 +60,31 @@ func main() {
 	paths := workspaceWalk(workspace)
 	fmt.Println(paths)
 
+	if pull {
+		handlePull(paths)
+	} else {
+		handleLog(paths)
+	}
+}
+
+func handlePull(paths []string) {
+	ch1 := make(chan []byte, 1)
+	for _, dir := range paths {
+		go func(dir string) {
+			out, err := execPull(dir)
+			if err != nil {
+				return
+			}
+			ch1 <- out
+		}(dir)
+	}
+	for range paths {
+		out := <-ch1
+		fmt.Println(string(out))
+	}
+}
+
+func handleLog(paths []string) {
 	// -aが指定されていない場合に、全ユーザ対象として検索できるように空データを入れる
 	if len(authors) == 0 {
 		authors = append(authors, "")
@@ -107,12 +135,8 @@ func main() {
 
 // commandExec exec git log command.
 func commandExec(dir string, c Config) []byte {
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
 	var cmd *exec.Cmd
-	args := []string{"log", "--numstat", "--all", "--author", c.name, "--no-merges", "--pretty=\"%h\""}
+	args := []string{"-C", dir, "log", "--numstat", "--all", "--author", c.name, "--no-merges", "--pretty=\"%h\""}
 	if len(c.since) != 0 {
 		args = append(args, "--since", c.since)
 	}
@@ -125,6 +149,14 @@ func commandExec(dir string, c Config) []byte {
 		panic(err)
 	}
 	return out
+}
+
+func execPull(dir string) ([]byte, error) {
+	var cmd *exec.Cmd
+	args := []string{"-C", dir, "pull"}
+	cmd = exec.Command("git", args...)
+	out, err := cmd.Output()
+	return out, err
 }
 
 type Count struct {

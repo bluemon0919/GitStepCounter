@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -61,36 +63,78 @@ func main() {
 	fmt.Println("author:", authorShow)
 	fmt.Println("repos:", repositoryShow)
 
-	paths := workspaceWalk(workspace)
-	fmt.Println(paths)
-
-	if pull {
-		handlePull(paths)
-	} else {
-		handleLog(paths)
+	pedom := NewGipedom(workspace, Options{
+		pull:           pull,
+		authors:        authors,
+		since:          since,
+		until:          until,
+		authorShow:     authorShow,
+		repositoryShow: repositoryShow,
+	}, os.Stdout)
+	if err := pedom.Run(); err != nil {
+		fmt.Print(err)
 	}
 }
 
-func handlePull(paths []string) {
+// Options represents the operation options of Gitpodem.
+type Options struct {
+	pull           bool
+	authors        Names
+	since          string
+	until          string
+	repositoryShow bool
+	authorShow     bool
+}
+
+// Gipedom represents an external command being prepared or run.
+type Gipedom struct {
+	rootDir string
+	opt     Options
+	w       io.Writer
+}
+
+// NewGipedom returns new Gipedom struct.
+func NewGipedom(rootDir string, opt Options, w io.Writer) *Gipedom {
+	return &Gipedom{
+		rootDir: rootDir,
+		opt:     opt,
+		w:       w,
+	}
+}
+
+// Run walks the git repository and runs a code step count.
+func (g *Gipedom) Run() error {
+	paths, err := g.workspaceWalk(g.rootDir)
+	if err != nil {
+		return err
+	}
+	if g.opt.pull {
+		g.handlePull(paths)
+	} else {
+		g.handleLog(paths)
+	}
+	return nil
+}
+
+// handlePull handles git pull.
+func (g *Gipedom) handlePull(paths []string) {
 	ch1 := make(chan []byte, 1)
 	for _, dir := range paths {
 		go func(dir string) {
-			out, err := execPull(dir)
-			if err != nil {
-				return
-			}
+			out, _ := g.execPull(dir)
 			ch1 <- out
 		}(dir)
 	}
 	for range paths {
 		out := <-ch1
-		fmt.Println(string(out))
+		fmt.Fprintln(g.w, string(out))
 	}
 }
 
-func handleLog(paths []string) {
+// handleLog handles git log.
+func (g *Gipedom) handleLog(paths []string) {
 	// -aが指定されていない場合に、全ユーザ対象として検索できるように空データを入れる
-	if len(authors) == 0 {
+	if len(g.opt.authors) == 0 {
 		authors = append(authors, "")
 	}
 
@@ -98,30 +142,32 @@ func handleLog(paths []string) {
 
 	for _, author := range authors {
 		if authorShow {
-			fmt.Println(":", author)
+			fmt.Fprintln(g.w, ":", author)
 		}
 		var authorCount Count
 
 		for _, dir := range paths {
-			out := commandExec(dir, Config{
+			out, err := g.commandExec(dir, Config{
 				name:  author,
 				since: since,
 				until: until,
 			})
-			//fmt.Println(string(out))
-			c := aggregate(out)
+			if err != nil {
+				return
+			}
+			c := g.aggregate(out)
 			authorCount.add += c.add
 			authorCount.sub += c.sub
 			authorCount.total += c.total
 
 			if repositoryShow {
-				fmt.Println(":  ", dir)
-				fmt.Printf(":   %d (+%d -%d)\n", c.total, c.add, c.sub)
+				fmt.Fprintln(g.w, ":  ", dir)
+				fmt.Fprintf(g.w, ":   %d (+%d -%d)\n", c.total, c.add, c.sub)
 			}
 		}
 		counts[author] = authorCount
 		if authorShow {
-			fmt.Printf(": %d (+%d -%d)\n", counts[author].total, counts[author].add, counts[author].sub)
+			fmt.Fprintf(g.w, ": %d (+%d -%d)\n", counts[author].total, counts[author].add, counts[author].sub)
 		}
 	}
 
@@ -132,14 +178,13 @@ func handleLog(paths []string) {
 		t.total += c.total
 	}
 
-	fmt.Println("")
-	fmt.Println(": total")
-	fmt.Printf(": %d (+%d -%d)\n", t.total, t.add, t.sub)
+	fmt.Fprintln(g.w, "")
+	fmt.Fprintln(g.w, ": total")
+	fmt.Fprintf(g.w, ": %d (+%d -%d)\n", t.total, t.add, t.sub)
 }
 
 // commandExec exec git log command.
-func commandExec(dir string, c Config) []byte {
-	var cmd *exec.Cmd
+func (g *Gipedom) commandExec(dir string, c Config) ([]byte, error) {
 	args := []string{"-C", dir, "log", "--numstat", "--all", "--author", c.name, "--no-merges", "--pretty=\"%h\""}
 	if len(c.since) != 0 {
 		args = append(args, "--since", c.since)
@@ -147,20 +192,12 @@ func commandExec(dir string, c Config) []byte {
 	if len(c.until) != 0 {
 		args = append(args, "--until", c.until)
 	}
-	cmd = exec.Command("git", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		panic(err)
-	}
-	return out
+	return exec.Command("git", args...).Output()
 }
 
-func execPull(dir string) ([]byte, error) {
-	var cmd *exec.Cmd
+func (g *Gipedom) execPull(dir string) ([]byte, error) {
 	args := []string{"-C", dir, "pull"}
-	cmd = exec.Command("git", args...)
-	out, err := cmd.Output()
-	return out, err
+	return exec.Command("git", args...).Output()
 }
 
 type Count struct {
@@ -170,7 +207,7 @@ type Count struct {
 }
 
 // aggregate aggregates the output data
-func aggregate(commnadOutput []byte) Count {
+func (g *Gipedom) aggregate(commnadOutput []byte) Count {
 
 	// git logコマンドはoutputにHT(ascii=9)を含み処理しづらいため、SP(ascii=32)に置き換える
 	for i := 0; i < len(commnadOutput); i++ {
@@ -204,34 +241,36 @@ func aggregate(commnadOutput []byte) Count {
 		}
 		count.add += add
 		count.sub += sub
-		//fmt.Printf("[%s]\n", str)
 	}
 	count.total = count.add + count.sub
 	return count
 }
 
-func workspaceWalk(dir string) []string {
+func (g *Gipedom) workspaceWalk(dir string) ([]string, error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	var paths []string
 	for _, f := range files {
 		var subdir = filepath.Join(dir, f.Name())
 		if f.IsDir() {
-			if !isGitRepository(subdir) {
-				paths = append(paths, workspaceWalk(subdir)...)
+			if !g.isGitRepository(subdir) {
+				dirs, err := g.workspaceWalk(subdir)
+				if err != nil {
+					return nil, err
+				}
+				paths = append(paths, dirs...)
 			} else {
 				paths = append(paths, subdir)
-				//fmt.Println(subdir)
 			}
 		}
 	}
-	return paths
+	return paths, nil
 }
 
-func isGitRepository(dir string) bool {
+func (g *Gipedom) isGitRepository(dir string) bool {
 	files, _ := ioutil.ReadDir(dir)
 	for _, f := range files {
 		if f.Name() == ".git" {

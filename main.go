@@ -34,8 +34,8 @@ var workspace string // Root directory= "/Users/kota/go/src/stepcounter/sample"
 var since string     // "2006-01-02"
 var until string     // "2006-01-02"
 
-var repositoryShow = true
-var authorShow = true
+var repositoryShow bool // Include repository information in result.
+var authorShow bool     // Include author in result.
 
 func init() {
 	flag.BoolVar(&pull, "pull", false, "ルートディレクトリ以下のリポジトリに対してgit pull操作を行います。")
@@ -43,6 +43,8 @@ func init() {
 	flag.StringVar(&workspace, "d", "", "検索のルートディレクトリを指定します。指定しない場合は現在のディレクトリが対象となります。")
 	flag.StringVar(&since, "s", "", "特定の日付より新しいコミットを表示します(2006-01-02)")
 	flag.StringVar(&until, "u", "", "特定の日付より古いコミットを表示します(2006-01-02)")
+	flag.BoolVar(&repositoryShow, "repos", false, "リポジトリ単位で結果を表示します")
+	flag.BoolVar(&authorShow, "author", false, "ユーザ単位で結果を表示します")
 }
 
 func main() {
@@ -56,6 +58,8 @@ func main() {
 	fmt.Println("rootDir:", workspace)
 	fmt.Println("since:", since)
 	fmt.Println("until:", until)
+	fmt.Println("author:", authorShow)
+	fmt.Println("repos:", repositoryShow)
 
 	paths := workspaceWalk(workspace)
 	fmt.Println(paths)

@@ -72,12 +72,8 @@ func (g *Gipedom) handleLog(paths []string) {
 		authors = append(authors, "")
 	}
 
-	var counts = make(map[string]Count)
-
+	var jdata []GitData
 	for _, author := range authors {
-		if authorShow {
-			fmt.Fprintln(g.w, ":", author)
-		}
 		var authorCount Count
 
 		for _, dir := range paths {
@@ -94,27 +90,60 @@ func (g *Gipedom) handleLog(paths []string) {
 			authorCount.sub += c.sub
 			authorCount.total += c.total
 
-			if repositoryShow {
-				fmt.Fprintln(g.w, ":  ", dir)
-				fmt.Fprintf(g.w, ":   %d (+%d -%d)\n", c.total, c.add, c.sub)
+			tmp := g.perse(out)
+			for i := range tmp {
+				tmp[i].repopath = dir
+				tmp[i].author = author
 			}
-		}
-		counts[author] = authorCount
-		if authorShow {
-			fmt.Fprintf(g.w, ": %d (+%d -%d)\n", counts[author].total, counts[author].add, counts[author].sub)
+			jdata = append(jdata, tmp...)
 		}
 	}
 
-	var t Count
-	for _, c := range counts {
-		t.add += c.add
-		t.sub += c.sub
-		t.total += c.total
+	if authorShow {
+		adata := make(map[string][]GitData)
+		for _, d := range jdata {
+			a := adata[d.author]
+			a = append(a, d)
+			adata[d.author] = a
+		}
+		for author, d := range adata {
+			fmt.Fprintln(g.w, "")
+			fmt.Fprintln(g.w, ": author =", author)
+			output(g.w, d)
+		}
 	}
+	{
+		fmt.Fprintln(g.w, "")
+		output(g.w, jdata)
+	}
+}
 
-	fmt.Fprintln(g.w, "")
-	fmt.Fprintln(g.w, ": total")
-	fmt.Fprintf(g.w, ": %d (+%d -%d)\n", t.total, t.add, t.sub)
+func output(w io.Writer, jdata []GitData) {
+	kind := make(map[string]AggregateData)
+	total := AggregateData{}
+	for _, d := range jdata {
+		total.add += d.add
+		total.sub += d.sub
+		k := kind[d.kind]
+		k.add += d.add
+		k.sub += d.sub
+		kind[d.kind] = k
+	}
+	for key, d := range kind {
+		fmt.Fprintln(w, ":", key)
+		fmt.Fprintf(w, ":  %d (+%d -%d)\n", d.total(), d.add, d.sub)
+	}
+	fmt.Fprintln(w, ": total")
+	fmt.Fprintf(w, ":  %d (+%d -%d)\n", total.total(), total.add, total.sub)
+}
+
+type AggregateData struct {
+	add int
+	sub int
+}
+
+func (d *AggregateData) total() int {
+	return d.add + d.sub
 }
 
 // commandExec exec git log command.
@@ -140,6 +169,15 @@ type Count struct {
 	total int
 }
 
+type GitData struct {
+	repopath string
+	author   string
+	filepath string
+	kind     string
+	add      int
+	sub      int
+}
+
 // perse
 // コマンドアウトプットを解析してjson形式で返す
 // 2   1   test.py
@@ -148,7 +186,7 @@ type Count struct {
 // sub : 1
 // filepath : test.py
 // kind : python
-func (g *Gipedom) perse(commnadOutput []byte) (result []map[string]interface{}) {
+func (g *Gipedom) perse(commnadOutput []byte) (result []GitData) {
 	// git logコマンドはoutputにHT(ascii=9)を含み処理しづらいため、SP(ascii=32)に置き換える
 	for i := 0; i < len(commnadOutput); i++ {
 		c := commnadOutput[i]
@@ -157,9 +195,9 @@ func (g *Gipedom) perse(commnadOutput []byte) (result []map[string]interface{}) 
 		}
 	}
 
-	data := make(map[string]interface{})
 	slice := strings.Split(string(commnadOutput), string(byte(10))) // LF(ascii=10)で分割する
 	for _, str := range slice {
+		data := GitData{}
 		if len(str) == 0 { // 空の文字列は除外
 			continue
 		}
@@ -179,12 +217,49 @@ func (g *Gipedom) perse(commnadOutput []byte) (result []map[string]interface{}) 
 		if err != nil {
 			continue
 		}
-		data["add"] = add
-		data["sub"] = sub
-		data["filepath"] = d[2]
+		data.add = add
+		data.sub = sub
+		data.filepath = d[2]
+		data.kind = filekind(d[2])
 		result = append(result, data)
 	}
 	return result
+}
+
+func filekind(path string) string {
+	var kindTable map[string]string = map[string]string{
+		".cpp":   "c++",
+		".hpp":   "c++",
+		".c":     "c",
+		".h":     "c",
+		".cs":    "c#",
+		".css":   "css",
+		".dart":  "dart",
+		".go":    "go",
+		".html":  "html",
+		".htm":   "html",
+		".java":  "java",
+		".js":    "javascript",
+		".mat":   "matlab",
+		".sql":   "sql",
+		".pl":    "perl",
+		".php":   "php",
+		".py":    "python",
+		".rb":    "ruby",
+		".rs":    "rust",
+		".scala": "scala",
+		".sh":    "shellscript",
+		".ts":    "typescript",
+		".xml":   "xml",
+		".vue":   "vuejs",
+	}
+
+	e := filepath.Ext(path)
+	if val, ok := kindTable[e]; ok {
+		return val
+	} else {
+		return "other"
+	}
 }
 
 // aggregate aggregates the output data

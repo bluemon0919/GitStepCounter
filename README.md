@@ -3,12 +3,24 @@
 ディレクトリを探索してgitリポジトリを探し、git logコマンドを利用してコードのステップをカウントします。  
 ルートディレクトリにgitリポジトリを指定することはできません。
 
-## Usage
+## Installation
 
-main.goのconfigに条件を入力し、プログラムを実行します。  
+- 本ツールを利用するためには事前にGitをインストールしてください。
+- 本ツールはGoで実装されています。buildに必要なためGoをインストールしてください。
+
+本リポジトリをcloneし、以下のコマンドでインストールします。  
+`GOPATH`を設定している場合は`$GOPATH/bin`、設定していない場合は`$HOME/go/bin`がインストール先になります。
 
 ```bash
-go run *go
+go install
+```
+
+## Usage
+
+gipedomコマンドの書式
+
+```bash
+gipedom [オプション]
 ```
 
 次のオプションを用意しています。  
@@ -37,7 +49,7 @@ go run *go
 注意：）複数のAuthorを指定する場合は次のようにします。
 
 ```bash
-go run *go -a bluemon0919 -a sample
+gipedom -a bluemon0919 -a sample
 ```
 
 ルートディレクトリからサブディレクトリを探索してgitリポジトリを見つけます。  
@@ -47,21 +59,32 @@ since, untilで指定した期間にauthorで指定したユーザが変更し�
 これは全てのユーザー、リポジトリのトータルです。
 
 ```bash
+: c++
+:  0 (+0 -0)
+: python
+:  16 (+13 -3)
 : total
-: 13 (+10 -3)
+:  16 (+13 -3)
 ```
 
 ユーザ単位、リポジトリ単位で表示したい場合はオプションを設定します。  
 ユーザ単位で表示する場合、次のフォーマットで結果を表示します。
 
 ```bash
-: bluemon0919
-: 13 (+10 -3)
-: sample
-: 0 (+0 -0)
-
+: author = bluemon0919
+: c++
+:  0 (+0 -0)
+: python
+:  16 (+13 -3)
 : total
-: 13 (+10 -3)
+:  16 (+13 -3)
+
+: c++
+:  0 (+0 -0)
+: python
+:  16 (+13 -3)
+: total
+:  16 (+13 -3)
 ```
 
 リポジトリ単位で表示する場合、次のフォーマットで結果を表示します。  
@@ -69,19 +92,19 @@ since, untilで指定した期間にauthorで指定したユーザが変更し�
 
 ```bash
 : bluemon0919
-:   /Users/kota/go/src/stepcounter/sample/s1
+:   /home/go/src/stepcounter/sample/s1
 :   13 (+10 -3)
-:   /Users/kota/go/src/stepcounter/sample/s2/s21
+:   /home/go/src/stepcounter/sample/s2/s21
 :   0 (+0 -0)
-:   /Users/kota/go/src/stepcounter/sample/s3
+:   /home/go/src/stepcounter/sample/s3
 :   0 (+0 -0)
 : 13 (+10 -3)
 : sample
-:   /Users/kota/go/src/stepcounter/sample/s1
+:   /home/go/src/stepcounter/sample/s1
 :   0 (+0 -0)
-:   /Users/kota/go/src/stepcounter/sample/s2/s21
+:   /home/go/src/stepcounter/sample/s2/s21
 :   0 (+0 -0)
-:   /Users/kota/go/src/stepcounter/sample/s3
+:   /home/go/src/stepcounter/sample/s3
 :   0 (+0 -0)
 : 0 (+0 -0)
 

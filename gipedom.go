@@ -99,21 +99,54 @@ func (g *Gipedom) handleLog(paths []string) {
 		}
 	}
 
-	if authorShow {
-		adata := make(map[string][]GitData)
-		for _, d := range jdata {
-			a := adata[d.author]
-			a = append(a, d)
-			adata[d.author] = a
+	if authorShow && len(g.opt.authors) != 0 {
+		fmt.Fprintln(g.w, "--- author ---")
+		if repositoryShow {
+			ardata := make(map[string]map[string][]GitData)
+			for _, d := range jdata {
+				if ardata[d.author] == nil {
+					ardata[d.author] = make(map[string][]GitData)
+				}
+				a := ardata[d.author]
+				r := a[d.repopath]
+				r = append(r, d)
+				a[d.repopath] = r
+				ardata[d.author] = a
+			}
+			for author, a := range ardata {
+				fmt.Fprintln(g.w, ": author =", author)
+				for repos, r := range a {
+					fmt.Fprintln(g.w, ": repos =", repos)
+					output(g.w, r)
+				}
+			}
+		} else {
+			adata := make(map[string][]GitData)
+			for _, d := range jdata {
+				a := adata[d.author]
+				a = append(a, d)
+				adata[d.author] = a
+			}
+			for author, d := range adata {
+				fmt.Fprintln(g.w, ": author =", author)
+				output(g.w, d)
+			}
 		}
-		for author, d := range adata {
-			fmt.Fprintln(g.w, "")
-			fmt.Fprintln(g.w, ": author =", author)
+	} else if repositoryShow {
+		fmt.Fprintln(g.w, "--- repository ---")
+		rdata := make(map[string][]GitData)
+		for _, d := range jdata {
+			r := rdata[d.repopath]
+			r = append(r, d)
+			rdata[d.repopath] = r
+		}
+		for repos, d := range rdata {
+			fmt.Fprintln(g.w, ": repos =", repos)
 			output(g.w, d)
 		}
 	}
 	{
-		fmt.Fprintln(g.w, "")
+		fmt.Fprintln(g.w, "--- total ---")
 		output(g.w, jdata)
 	}
 }
